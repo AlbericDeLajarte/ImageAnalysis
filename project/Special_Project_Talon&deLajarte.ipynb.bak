@@ -10,23 +10,14 @@
     "[iapr2018]: https://github.com/LTS5/iapr-2020\n",
     "\n",
     "## Extract datas\n",
-    "We used pims : `pip install git+https://github.com/soft-matter/pims.git`, `skimage`, `os`, `numpy`, `matplotlib`, `argparse`"
+    "We used pims : `pip install git+https://github.com/soft-matter/pims.git`, `skimage`, `os`, `numpy`, `matplotlib`, `argparse`, `pickle`, `gzip`, `sklearn`, `scipy`, `warnings`"
    ]
   },
   {
    "cell_type": "code",
-   "execution_count": 11,
+   "execution_count": null,
    "metadata": {},
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "None\n",
-      "out.mp4\n"
-     ]
-    }
-   ],
+   "outputs": [],
    "source": [
     "import argparse\n",
     "\n",
@@ -35,44 +26,31 @@
     "parser.add_argument('--output', required=False, default=\"out.mp4\")\n",
     "parser.add_argument('-f')#To run flawlessly in jupyter-notebook\n",
     "args = parser.parse_args()\n",
-    "print(args.input)\n",
-    "print(args.output)"
+    "print(\"--input {}\".format(args.input))\n",
+    "print(\"--output {}\".format(args.output))"
    ]
   },
   {
    "cell_type": "code",
-   "execution_count": 13,
+   "execution_count": null,
    "metadata": {
     "scrolled": false
    },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "<Frames>\n",
-      "Format: Huffyuv / HuffYUV\n",
-      "Source: ../data/robot_parcours_1.avi\n",
-      "Duration: 21.000 seconds\n",
-      "Frame rate: 2.000 fps\n",
-      "Length: 42 frames\n",
-      "Frame Shape: (480, 720, 3)\n",
-      "\n"
-     ]
-    }
-   ],
+   "outputs": [],
    "source": [
     "import os\n",
     "import numpy as np\n",
     "import matplotlib.pyplot as plt\n",
     "import pims\n",
+    "import warnings\n",
     "\n",
     "data_base_path = os.path.join(os.pardir, 'data')\n",
+    "data_base_path = os.path.join(os.pardir, 'data')\n",
     "if(args.input is None):\n",
-    "    vid = pims.open(os.path.join(data_base_path, 'robot_parcours_1.avi'))\n",
+    "    vid = pims.open(os.path.join(data_base_path, 'robot_parcours_1_rotated_0.mp4'))\n",
     "else:\n",
     "    vid = pims.open(args.input)\n",
-    "plt.figure(figsize = (10,10))\n",
+    "    warnings.filterwarnings(\"ignore\")\n",
     "plt.imshow(vid[0])\n",
     "print(vid)"
    ]
@@ -101,13 +79,11 @@
    "outputs": [],
    "source": [
     "vid_stack = np.stack(vid, axis=0)\n",
-    "print(\"Shape of vid_stack:{}\".format(vid_stack.shape))\n",
     "background = np.median(vid_stack, axis=0).astype(int)\n",
-    "print(\"Shape of background:{}\".format(background.shape))\n",
-    "\n",
-    "plt.figure(figsize = (20,20))\n",
-    "plt.imshow(background)\n",
-    "plt.show(block=False)"
+    "if args.input is None:\n",
+    "    plt.figure(figsize = (20,20))\n",
+    "    plt.imshow(background)\n",
+    "    plt.show(block=False)"
    ]
   },
   {
@@ -129,22 +105,23 @@
     "#Few tests.\n",
     "from skimage.morphology import binary_opening, binary_closing, disk, label\n",
     "from skimage.measure import regionprops\n",
-    "\n",
-    "col_threshold = 100#How to choose it ???\n",
-    "fig, ax = plt.subplots(1,2, figsize=(20,10))\n",
     "def red(v, th):\n",
     "    r = v[:,:,0] > th\n",
     "    g = v[:,:,1] < th\n",
     "    b = v[:,:,2] < th\n",
     "    return np.logical_and(r, g, b)\n",
-    "red_arrow = red(vid[9], col_threshold)\n",
-    "red_arrow_opened = binary_opening(red_arrow, selem=disk(2))\n",
+    "col_threshold = 100#How to choose it ???\n",
+    "if args.input is None:\n",
+    "    fig, ax = plt.subplots(1,2, figsize=(20,10))\n",
     "\n",
-    "ax[0].imshow(red_arrow)\n",
-    "ax[0].set_title(\"Before opening dif\")\n",
-    "ax[1].imshow(red_arrow_opened)\n",
-    "ax[1].set_title(\"After opening\")\n",
-    "plt.show(block=False)"
+    "    red_arrow = red(vid[9], col_threshold)\n",
+    "    red_arrow_opened = binary_opening(red_arrow, selem=disk(2))\n",
+    "\n",
+    "    ax[0].imshow(red_arrow)\n",
+    "    ax[0].set_title(\"Before opening dif\")\n",
+    "    ax[1].imshow(red_arrow_opened)\n",
+    "    ax[1].set_title(\"After opening\")\n",
+    "    plt.show(block=False)\n"
    ]
   },
   {
@@ -293,6 +270,13 @@
    ]
   },
   {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Find the regions of interest"
+   ]
+  },
+  {
    "cell_type": "code",
    "execution_count": null,
    "metadata": {
@@ -311,16 +295,27 @@
     "bk_bb = binary_dilation(bk_b, disk(3)) #background with consolidated objects\n",
     "bk_bb_label = label(bk_bb) #Labelise\n",
     "bk_bb_regionprops = regionprops(bk_bb_label) #Measure the image\n",
-    "fig, ax = plt.subplots(figsize=(10, 10))\n",
-    "ax.imshow(bk_g, cmap='gray')\n",
     "valid_boxes = [] #Keep the regionprops we wanted\n",
     "for b in bk_bb_regionprops:\n",
     "    if(b.bbox_area>50 and b.bbox_area < 700): #If the bounding box is bigger than 50 and smaller than 700, it's a sign\n",
     "        valid_boxes.append(b)\n",
+    "\n",
+    "if args.input is None:\n",
+    "    fig, ax = plt.subplots(figsize=(10, 10))\n",
+    "    ax.imshow(bk_g, cmap='gray')\n",
+    "    for b in valid_boxes:\n",
     "        minr, minc, maxr, maxc = b.bbox\n",
     "        rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,\n",
     "                                  fill=False, edgecolor='red', linewidth=1)\n",
-    "        ax.add_patch(rect)\n"
+    "        ax.add_patch(rect)\n",
+    "print(\"We have {} valid_boxes\".format(len(valid_boxes)))\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Look at the order they get selected"
    ]
   },
   {
@@ -338,19 +333,24 @@
     "        if(covered(tm[:,:,0], bb.bbox)): #If the bounding box is covered\n",
     "            if(bb not in used_bb.values()):#Add it to the list of used bounding boxes\n",
     "                used_bb[i] = bb\n",
-    "fig, ax = plt.subplots(figsize=(20, 20))\n",
-    "ax.imshow(bk_g, cmap='gray')\n",
-    "for i, bb in enumerate(used_bb):\n",
-    "    minr, minc, maxr, maxc = used_bb[bb].bbox\n",
-    "    rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,\n",
-    "                              fill=False, edgecolor='red', linewidth=1)\n",
-    "    if(i%2==0):\n",
-    "        ax.text(maxc,maxr, '{}:number@frame:{}'.format(i, bb))\n",
-    "    else:\n",
-    "        ax.text(maxc,maxr, '{}:operator@frame:{}'.format(i, bb))\n",
-    "    ax.text(maxc,maxr, i)\n",
-    "    ax.add_patch(rect)\n",
-    "plt.show(block=False)"
+    "print(\"We have {} used bounding_boxes\".format(len(used_bb)))\n",
+    "if args.input is None:\n",
+    "    fig, ax = plt.subplots(figsize=(20, 20))\n",
+    "    ax.imshow(bk_g, cmap='gray')\n",
+    "    for i, bb in enumerate(used_bb):\n",
+    "        minr, minc, maxr, maxc = used_bb[bb].bbox\n",
+    "        rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,\n",
+    "                                  fill=False, edgecolor='red', linewidth=1)\n",
+    "        ax.text(maxc,maxr, i)\n",
+    "        ax.add_patch(rect)\n",
+    "    plt.show(block=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Create a dict of used frame, with all the needed informations"
    ]
   },
   {
@@ -365,15 +365,22 @@
     "\n",
     "for i, bb in enumerate(used_bb):\n",
     "    frame = {\"frame_number\": bb,\n",
-    "             \"rgb_image\": background[used_bb[bb].bbox[0]:used_bb[bb].bbox[2], used_bb[bb].bbox[1]:used_bb[bb].bbox[3]],\n",
     "             \"type\": \"number\" if(i%2==0) else \"operator\",  \n",
     "            }\n",
+    "    frame[\"bbox\"] = used_bb[bb].bbox\n",
+    "    frame[\"rgb_image\"] = background[used_bb[bb].bbox[0]:used_bb[bb].bbox[2], used_bb[bb].bbox[1]:used_bb[bb].bbox[3]]\n",
     "    frame[\"segmented\"] = np.where(rgb2gray(frame[\"rgb_image\"]) < threshold_otsu(rgb2gray(frame[\"rgb_image\"])), 255, 0)\n",
     "    frame[\"labeled\"] = label(frame[\"segmented\"])\n",
     "    frame[\"region\"] = regionprops(frame[\"labeled\"], intensity_image=frame[\"segmented\"] )\n",
-    "    \n",
-    "    used_frame.append(frame)\n",
-    "    "
+    "    used_frame.append(frame)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Image Classifier\n",
+    "### MLP"
    ]
   },
   {
@@ -387,101 +394,73 @@
     "# Load classic MNIST\n",
     "import gzip\n",
     "from sklearn.neural_network import MLPClassifier\n",
-    "\n",
-    "def extract_data(filename, image_shape, image_number):\n",
-    "    with gzip.open(filename) as bytestream:\n",
-    "        bytestream.read(16)\n",
-    "        buf = bytestream.read(np.prod(image_shape) * image_number)\n",
-    "        data = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)\n",
-    "        data = data.reshape(image_number, image_shape[0], image_shape[1])\n",
-    "    return data\n",
-    "\n",
-    "\n",
-    "def extract_labels(filename, image_number):\n",
-    "    with gzip.open(filename) as bytestream:\n",
-    "        bytestream.read(8)\n",
-    "        buf = bytestream.read(1 * image_number)\n",
-    "        labels = np.frombuffer(buf, dtype=np.uint8).astype(np.int64)\n",
-    "    return labels\n",
-    "\n",
-    "image_shape = (28, 28)\n",
-    "train_set_size = 60000\n",
-    "test_set_size = 10000\n",
-    "\n",
-    "data_MNIST = os.path.join(data_base_path, \"MNIST\")\n",
-    "\n",
-    "train_images_path = os.path.join(data_MNIST, 'train-images-idx3-ubyte.gz')\n",
-    "train_labels_path = os.path.join(data_MNIST, 'train-labels-idx1-ubyte.gz')\n",
-    "test_images_path = os.path.join(data_MNIST, 't10k-images-idx3-ubyte.gz')\n",
-    "test_labels_path = os.path.join(data_MNIST, 't10k-labels-idx1-ubyte.gz')\n",
-    "\n",
-    "train_images = extract_data(train_images_path, image_shape, train_set_size)\n",
-    "test_images = extract_data(test_images_path, image_shape, test_set_size)\n",
-    "train_labels = extract_labels(train_labels_path, train_set_size)\n",
-    "test_labels = extract_labels(test_labels_path, test_set_size)\n",
-    "\n",
-    "train_images = train_images[train_labels != 9]\n",
-    "train_labels = train_labels[train_labels != 9]\n",
-    "test_images = test_images[test_labels != 9]\n",
-    "test_labels = test_labels[test_labels != 9]\n",
-    "\n",
-    "train_images_flat = train_images.reshape(train_images.shape[0], -1)\n",
-    "test_images_flat = test_images.reshape(test_images.shape[0], -1)\n",
-    "\n",
-    "train_set_size = train_images.shape[0]\n",
-    "test_set_size = test_images.shape[0]\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
-   "outputs": [],
-   "source": [
-    "# Load rotated MNIST\n",
-    "rot_MNIST_test = np.loadtxt('../data/mnist_rotation_new/mnist_all_rotation_normalized_float_test.amat')\n",
-    "rot_MNIST_train = np.loadtxt('../data/mnist_rotation_new/mnist_all_rotation_normalized_float_train_valid.amat')\n",
-    "\n",
-    "rot_MNIST_test = rot_MNIST_test[rot_MNIST_test[:,-1] != 9]\n",
-    "rot_MNIST_train = rot_MNIST_train[rot_MNIST_train[:,-1] != 9]"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
-   "outputs": [],
-   "source": [
-    "# Combine dataset\n",
-    "total_train_images = np.append(train_images_flat,rot_MNIST_test[:,:-1], axis=0)\n",
-    "total_train_labels = np.append(train_labels, rot_MNIST_test[:,-1], axis=0)\n",
-    "\n",
-    "total_test_images = np.append(test_images_flat,rot_MNIST_train[:,:-1], axis=0)\n",
-    "total_test_labels = np.append(test_labels, rot_MNIST_train[:,-1], axis=0)"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
-   "outputs": [],
-   "source": [
-    "# Train and save MLP\n",
     "import pickle\n",
+    "if not os.path.isfile('pickle_MNIST_model.pkl'):\n",
+    "    def extract_data(filename, image_shape, image_number):\n",
+    "        with gzip.open(filename) as bytestream:\n",
+    "            bytestream.read(16)\n",
+    "            buf = bytestream.read(np.prod(image_shape) * image_number)\n",
+    "            data = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)\n",
+    "            data = data.reshape(image_number, image_shape[0], image_shape[1])\n",
+    "        return data\n",
     "\n",
-    "mlp_adam = MLPClassifier(solver='adam', activation='relu', alpha=0.6, hidden_layer_sizes=(50, 30, 20), random_state=1)\n",
-    "mlp_adam.fit(total_train_images, total_train_labels)\n",
     "\n",
+    "    def extract_labels(filename, image_number):\n",
+    "        with gzip.open(filename) as bytestream:\n",
+    "            bytestream.read(8)\n",
+    "            buf = bytestream.read(1 * image_number)\n",
+    "            labels = np.frombuffer(buf, dtype=np.uint8).astype(np.int64)\n",
+    "        return labels\n",
+    "\n",
+    "    image_shape = (28, 28)\n",
+    "    train_set_size = 60000\n",
+    "    test_set_size = 10000\n",
+    "\n",
+    "    data_MNIST = os.path.join(data_base_path, \"MNIST\")\n",
+    "\n",
+    "    train_images_path = os.path.join(data_MNIST, 'train-images-idx3-ubyte.gz')\n",
+    "    train_labels_path = os.path.join(data_MNIST, 'train-labels-idx1-ubyte.gz')\n",
+    "    test_images_path = os.path.join(data_MNIST, 't10k-images-idx3-ubyte.gz')\n",
+    "    test_labels_path = os.path.join(data_MNIST, 't10k-labels-idx1-ubyte.gz')\n",
+    "\n",
+    "    train_images = extract_data(train_images_path, image_shape, train_set_size)\n",
+    "    test_images = extract_data(test_images_path, image_shape, test_set_size)\n",
+    "    train_labels = extract_labels(train_labels_path, train_set_size)\n",
+    "    test_labels = extract_labels(test_labels_path, test_set_size)\n",
+    "\n",
+    "    train_images = train_images[train_labels != 9]\n",
+    "    train_labels = train_labels[train_labels != 9]\n",
+    "    test_images = test_images[test_labels != 9]\n",
+    "    test_labels = test_labels[test_labels != 9]\n",
+    "\n",
+    "    train_images_flat = train_images.reshape(train_images.shape[0], -1)\n",
+    "    test_images_flat = test_images.reshape(test_images.shape[0], -1)\n",
+    "\n",
+    "    train_set_size = train_images.shape[0]\n",
+    "    test_set_size = test_images.shape[0]\n",
+    "\n",
+    "# Load rotated MNIST\n",
+    "    rot_MNIST_test = np.loadtxt('../data/mnist_rotation_new/mnist_all_rotation_normalized_float_test.amat')\n",
+    "    rot_MNIST_train = np.loadtxt('../data/mnist_rotation_new/mnist_all_rotation_normalized_float_train_valid.amat')\n",
+    "\n",
+    "    rot_MNIST_test = rot_MNIST_test[rot_MNIST_test[:,-1] != 9]\n",
+    "    rot_MNIST_train = rot_MNIST_train[rot_MNIST_train[:,-1] != 9]\n",
+    "\n",
+    "# Combine dataset\n",
+    "    total_train_images = np.append(train_images_flat,rot_MNIST_test[:,:-1], axis=0)\n",
+    "    total_train_labels = np.append(train_labels, rot_MNIST_test[:,-1], axis=0)\n",
+    "\n",
+    "    total_test_images = np.append(test_images_flat,rot_MNIST_train[:,:-1], axis=0)\n",
+    "    total_test_labels = np.append(test_labels, rot_MNIST_train[:,-1], axis=0)\n",
+    "\n",
+    "# Train and save MLP\n",
+    "    mlp_adam = MLPClassifier(solver='adam', activation='relu', alpha=0.6, hidden_layer_sizes=(50, 30, 20),\n",
+    "                             verbose=True, random_state=1)\n",
+    "    mlp_adam.fit(total_train_images, total_train_labels)\n",
     "\n",
     "# Save to file in the current working directory\n",
-    "with open(\"pickle_MNIST_model.pkl\", 'wb') as file:\n",
-    "    pickle.dump(mlp_adam, file)"
+    "    with open(\"pickle_MNIST_model.pkl\", 'wb') as file:\n",
+    "        pickle.dump(mlp_adam, file)"
    ]
   },
   {
@@ -500,20 +479,45 @@
    ]
   },
   {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Test of MLP predictor\n",
+    "Using the rotation MNIST test set"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pickle\n",
+    "with open(\"pickle_MNIST_model.pkl\", 'rb') as file:\n",
+    "    saved_model = pickle.load(file)"
+   ]
+  },
+  {
    "cell_type": "code",
    "execution_count": null,
    "metadata": {
-    "scrolled": false
+    "scrolled": true
    },
    "outputs": [],
    "source": [
     "# Test model accuracy with test dataset \n",
-    "\n",
-    "with open(\"pickle_MNIST_model.pkl\", 'rb') as file:\n",
-    "    saved_model = pickle.load(file)\n",
-    "\n",
-    "accuracy(saved_model, rot_MNIST_test[:,:-1], rot_MNIST_test[:,-1])\n",
-    "#accuracy(saved_model, train_images_flat, train_labels)\n"
+    "if args.input is None and False:\n",
+    "    rot_MNIST_test = np.loadtxt('../data/mnist_rotation_new/mnist_all_rotation_normalized_float_test.amat')\n",
+    "    rot_MNIST_test = rot_MNIST_test[rot_MNIST_test[:,-1] != 9]\n",
+    "    accuracy(saved_model, rot_MNIST_test[:,:-1], rot_MNIST_test[:,-1])\n",
+    "    #accuracy(saved_model, train_images_flat, train_labels)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Using the video we have"
    ]
   },
   {
@@ -525,72 +529,33 @@
    "outputs": [],
    "source": [
     "# Show result of MLP prediction\n",
-    "\n",
     "from skimage.transform import resize\n",
     "\n",
     "for frame in used_frame:\n",
     "    if frame[\"type\"] == \"number\":\n",
     "        image_mlp_sized = resize(frame[\"segmented\"], (28, 28), anti_aliasing=True, preserve_range=True).astype(int)\n",
     "        image_mlp = np.ravel(image_mlp_sized)\n",
-    "        frame[\"class\"] = np.argmax(saved_model.predict_proba([image_mlp]), 1)\n",
+    "        frame[\"class\"] = np.argmax(saved_model.predict_proba([image_mlp]), 1)[0]\n",
     "        #frame[\"class\"] = saved_model.predict_proba([image_mlp])\n",
-    "        print(frame[\"class\"])\n",
+    "        print(\"Class of number is :{}\".format(frame[\"class\"]))\n",
+    "if args.input is None:\n",
+    "    fig, axes = plt.subplots(3, 4, figsize=(10,8))        \n",
+    "    for im, ax in zip(valid_boxes, axes.flatten()):\n",
+    "        image_mlp = background[im.bbox[0]:im.bbox[2], im.bbox[1]:im.bbox[3]]\n",
+    "        image_mlp = np.where(rgb2gray(image_mlp) < threshold_otsu(rgb2gray(image_mlp)), 255, 0)\n",
+    "        image_mlp_flat = np.ravel(resize(image_mlp, (28, 28), anti_aliasing=True, preserve_range=True).astype(int))\n",
     "\n",
-    "fig, axes = plt.subplots(3, 4, figsize=(10,8))        \n",
-    "for im, ax in zip(valid_boxes, axes.flatten()):\n",
-    "    image_mlp = background[im.bbox[0]:im.bbox[2], im.bbox[1]:im.bbox[3]]\n",
-    "    image_mlp = np.where(rgb2gray(image_mlp) < threshold_otsu(rgb2gray(image_mlp)), 255, 0)\n",
-    "    image_mlp_flat = np.ravel(resize(image_mlp, (28, 28), anti_aliasing=True, preserve_range=True).astype(int))\n",
-    "    \n",
-    "    ax.imshow(image_mlp)\n",
-    "    result = saved_model.predict_proba([image_mlp_flat])\n",
-    "    ax.set_title(np.max(result)/np.max(result[result!=np.max(result)]))\n",
-    "    #ax.set_title(np.argmax(result, 1))"
+    "        ax.imshow(image_mlp)\n",
+    "        result = saved_model.predict_proba([image_mlp_flat])\n",
+    "        ax.set_title(\"{:0.0f}\".format(np.max(result)/np.max(result[result!=np.max(result)])))\n",
+    "        #ax.set_title(np.argmax(result, 1))"
    ]
   },
   {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
-   "outputs": [],
+   "cell_type": "markdown",
+   "metadata": {},
    "source": [
-    "list_operator = []\n",
-    "for frame in used_frame:\n",
-    "    if frame[\"type\"] == \"operator\":\n",
-    "        if (np.amax(frame[\"labeled\"]))>1:\n",
-    "            frame[\"class\"] = np.amax(frame[\"labeled\"])\n",
-    "        else:            \n",
-    "            list_operator.append(frame)\n",
-    "\n",
-    "fig, axes = plt.subplots(1, 2, figsize=(10,8)) \n",
-    "for op, ax in zip(list_operator, axes.flatten()):\n",
-    "    ax.imshow(op[\"labeled\"])\n",
-    "    ax.set_title(\"Comp:{:.2}, Hu:{:.2}\".format(op[\"region\"][0].perimeter/op[\"region\"][0].area, op[\"region\"][0].orientation))\n",
-    "    "
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
-   "outputs": [],
-   "source": [
-    "from skimage import io\n",
-    "img_operator = io.imread(\"original_operators.png\")\n",
-    "img_operator = np.where(rgb2gray(img_operator) < threshold_otsu(rgb2gray(img_operator)), 255, 0)\n",
-    "\n",
-    "img_plus = [img_operator[:,0:347]]*10000\n",
-    "img_moins = [img_operator[:,347*2:347*3]]*10000\n",
-    "img_prod = [img_operator[:,347*4:]]*10000\n",
-    "\n",
-    "img_pmp = [img_plus, img_moins, img_prod]\n",
-    "\n",
-    "plt.imshow(img_plus[0])\n",
-    "    "
+    "### Operator predictor"
    ]
   },
   {
@@ -601,14 +566,114 @@
    },
    "outputs": [],
    "source": [
+    "list_operator = []\n",
+    "for frame in used_frame:\n",
+    "    if frame[\"type\"] == \"operator\":\n",
+    "        if (np.amax(frame[\"labeled\"]))>1: #Why this ?\n",
+    "            frame[\"class\"] = np.amax(frame[\"labeled\"])\n",
+    "        else:            \n",
+    "            list_operator.append(frame)\n",
+    "\n",
+    "# ADD FAKE MINUS SIGN !!!!\n",
+    "# list_operator"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if args.input is None:\n",
+    "    fig, axes = plt.subplots(1, 3, figsize=(10,8)) \n",
+    "    for op, ax in zip(list_operator, axes.flatten()):\n",
+    "        ax.imshow(op[\"segmented\"])\n",
+    "        ax.set_title(\"Per:{:.2}, Area:{}\".format(op[\"region\"][0].perimeter, op[\"region\"][0].area ))\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
     "from skimage.transform import ProjectiveTransform\n",
     "from skimage.transform import swirl, rotate\n",
+    "import pickle\n",
+    "from skimage import io\n",
     "\n",
-    "transformed = rotate(swirl(img_plus[0], strength = 5, preserve_range=True), angle = 45)\n",
+    "if not os.path.isfile('operators_classification.pkl'):\n",
+    "    # Attention, file needed \n",
+    "    img_operator = io.imread(os.path.join(data_base_path, 'original_operators.png'))\n",
+    "    img_operator = np.where(rgb2gray(img_operator) < threshold_otsu(rgb2gray(img_operator)), 255, 0)\n",
     "\n",
-    "#plt.imshow(label(transformed))\n",
-    "#regionprops(label(transformed))\n",
-    "transformed"
+    "    img_plus = [img_operator[:,0:347]]*1000\n",
+    "    img_moins = [img_operator[:,347*2:347*3]]*1000\n",
+    "    img_prod = [img_operator[:,347*4:]]*1000\n",
+    "\n",
+    "    img_pmp = [img_plus, img_moins, img_prod]\n",
+    "    if args.input is None:\n",
+    "        plt.imshow(resize(img_plus[0], (28, 28), anti_aliasing=True, preserve_range=True).astype(int))\n",
+    "        print(img_plus[0].shape)\n",
+    "\n",
+    "    rand_rot = np.random.normal(0, 15, 1000)\n",
+    "    rand_swirl = np.random.normal(0, 0.5, 1000)\n",
+    "\n",
+    "    rand_Xmin = np.round(np.abs(np.random.normal(0, 2.5, 1000))).astype(int)+1\n",
+    "    rand_Xmax = np.round(np.abs(np.random.normal(0, 2.5, 1000))).astype(int)+1\n",
+    "    rand_Ymin = np.round(np.abs(np.random.normal(0, 2.5, 1000))).astype(int)+1\n",
+    "    rand_Ymax = np.round(np.abs(np.random.normal(0, 2.5, 1000))).astype(int)+1\n",
+    "\n",
+    "    img_pmp_trans = [[ rotate(swirl(resize(img_op, (40,40), preserve_range=True), strength = rand_swirl[i], preserve_range=True), angle = rand_rot[i]) for i, img_op in enumerate(img_op_list)] for img_op_list in img_pmp]\n",
+    "\n",
+    "    img_pmp_trans = [[ resize(img_op[rand_Xmin[i]:-rand_Xmax[i], rand_Ymin[i]:-rand_Ymax[i]], (28,28), anti_aliasing=True, preserve_range=True).astype(int) for i, img_op in enumerate(img_op_list)] for img_op_list in img_pmp_trans]\n",
+    "\n",
+    "    img_pmp_trans_region = [[regionprops(label(np.where(img_op > threshold_otsu(img_op), 255, 0)), intensity_image= img_op) for img_op in img_op_list] for img_op_list in img_pmp_trans]\n",
+    "    operators_classification = dict()\n",
+    "    operators_classification[\"mean_feature\"] = [[np.mean([img_op[0].solidity for img_op in img_op_list]), np.mean([img_op[0].eccentricity for img_op in img_op_list])] for img_op_list in img_pmp_trans_region]\n",
+    "    operators_classification[\"var_feature\"] = [[np.var([img_op[0].solidity for img_op in img_op_list]), np.var([img_op[0].eccentricity for img_op in img_op_list])] for img_op_list in img_pmp_trans_region]\n",
+    "    operators_classification[\"img_pmp_trans_region\"] = img_pmp_trans_region\n",
+    "    with open(\"operators_classification.pkl\", 'wb') as file: # We should dump only the needed things, not the whole 42 Mo\n",
+    "        pickle.dump(operators_classification, file)\n",
+    "with open(\"operators_classification.pkl\", 'rb') as file:\n",
+    "    operators_classification = pickle.load(file)\n",
+    "mean_feature = operators_classification[\"mean_feature\"]\n",
+    "var_feature = operators_classification[\"var_feature\"]\n",
+    "img_pmp_trans_region = operators_classification[\"img_pmp_trans_region\"]\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from scipy.spatial.distance import mahalanobis\n",
+    "from numpy.linalg import inv\n",
+    "XX, YY = np.meshgrid(np.linspace(0.5, 1.1, 100), np.linspace(0, 1, 100))\n",
+    "map_feature = np.asarray([[np.argmax([-mahalanobis(np.asarray([x,y]), mean_feat, inv(np.diag(var_feat))) for mean_feat, var_feat in zip(mean_feature, var_feature)]) for x in (XX[0,:])] for y in (YY[:,0])])\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if args.input is None:\n",
+    "    fig, axe = plt.subplots(1, 1, figsize=(15,8))\n",
+    "\n",
+    "    axe.pcolor(XX, YY, map_feature)\n",
+    "\n",
+    "    axe.scatter([img[0].solidity for img in img_pmp_trans_region[0]], [img[0].eccentricity for img in img_pmp_trans_region[0]], marker = '+', color = 'red')\n",
+    "    axe.scatter([img[0].solidity for img in img_pmp_trans_region[1]], [img[0].eccentricity for img in img_pmp_trans_region[1]], marker = '^', color = 'blue')\n",
+    "    axe.scatter([img[0].solidity for img in img_pmp_trans_region[2]], [img[0].eccentricity for img in img_pmp_trans_region[2]], marker = 'H', color = 'green')\n",
+    "    axe.scatter(list_operator[0][\"region\"][0].solidity, list_operator[0][\"region\"][0].eccentricity, marker = '+', color = 'w', label = '1st operator')\n",
+    "    axe.scatter(list_operator[1][\"region\"][0].solidity, list_operator[1][\"region\"][0].eccentricity, marker = 'H', color = 'w', label = '2nd operator')\n",
+    "    axe.legend()\n",
+    "    axe.set_xlabel(\"solidity\")\n",
+    "    axe.set_ylabel(\"eccentricity\")"
    ]
   },
   {
@@ -621,7 +686,7 @@
    "source": [
     "import matplotlib.animation as animation\n",
     "import matplotlib as mpl\n",
-    "def ani_frame(frames_list, positions, equation, valid_boxes, used_bb):\n",
+    "def ani_frame(frames_list, positions, equation, valid_boxes, used_bb, used_frame):\n",
     "    positions=np.asarray(positions)\n",
     "    mpl.rcParams['savefig.pad_inches'] = 0\n",
     "    fig = plt.figure( frameon=False)\n",
@@ -642,6 +707,9 @@
     "    time_frame_number = ax.text(10,26, 'Frame nº{:02d}'.format(0), fontsize=12, bbox=props)\n",
     "    time_positions, = ax.plot([], [], ls='--', marker='o', markersize=12, color='r', lw=1, alpha=0.5, fillstyle='none')\n",
     "    time_equation = ax.text(10, frames_list[0].shape[0]-20, '', fontsize=12, bbox=props)\n",
+    "    for frame in used_frame:\n",
+    "        if frame[\"type\"] == \"number\":\n",
+    "            ax.text(frame[\"bbox\"][3], frame[\"bbox\"][2], frame[\"class\"])\n",
     "    def update_img(n):\n",
     "        time_im.set_data(frames_list[n])\n",
     "        time_positions.set_data(positions[0:n+1,1], positions[0:n+1,0])\n",
@@ -656,7 +724,7 @@
     "    #legend(loc=0)\n",
     "    ani = animation.FuncAnimation(fig,update_img,range(len(frames_list)))\n",
     "    writer = animation.writers['ffmpeg'](fps=vid.frame_rate)\n",
-    "    ani.save(args.output ,writer=writer,dpi=100)\n",
+    "    ani.save(args.output,writer=writer,dpi=100)\n",
     "    return ani"
    ]
   },
@@ -669,18 +737,35 @@
    "outputs": [],
    "source": [
     "positions=[t.centroid for t in trajectory]\n",
-    "equation=[str(i) for i, f in enumerate(vid)]#Remove this\n",
-    "ani_frame(vid, positions=positions, equation=equation, valid_boxes=valid_boxes, used_bb=used_bb)\n",
-    "vidi = pims.open(args.output)\n",
-    "print(vidi)"
+    "equation=['' for i in range(len(vid))]\n",
+    "pivot = 0\n",
+    "for frame in used_frame:\n",
+    "    if frame[\"type\"] == \"number\":\n",
+    "        for i in np.arange(pivot, len(vid)):\n",
+    "            equation[i] = equation[pivot]\n",
+    "        equation[frame[\"frame_number\"]] = equation[pivot]+str(frame[\"class\"])+' '\n",
+    "        pivot = frame[\"frame_number\"]\n",
+    "for i in np.arange(pivot, len(vid)):\n",
+    "    equation[i] = equation[pivot]\n",
+    "print(equation)"
    ]
   },
   {
    "cell_type": "code",
    "execution_count": null,
-   "metadata": {
-    "scrolled": false
-   },
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "\n",
+    "ani_frame(vid, positions=positions, equation=equation, valid_boxes=valid_boxes, used_bb=used_bb, used_frame=used_frame)\n",
+    "vidi = pims.open(args.output)\n",
+    "#print(vidi)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
    "outputs": [],
    "source": []
   }
