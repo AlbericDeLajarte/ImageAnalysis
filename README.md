@@ -1,2 +1,2 @@
 # ImageAnalysis
-Image Analysis and Pattern Recognition
+Lab for the course Image Analysis and Pattern Recognition
